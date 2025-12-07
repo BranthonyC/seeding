@@ -1,120 +1,191 @@
-# Apple Music Case Study
-**Universidad Da Vinci de Guatemala** **Curso:** Desarrollo Web / Bases de Datos II  
-**Catedrático:** Ing. Brandon Chitay
+# 🎵 Apple Music NoSQL Analytics Engine (PoC)
+
+> **Examen Final: Bases de Datos 2**
+> **Arquitectura de Datos para Migración a MongoDB**
+>
+> **Autor:** William Cardona
+> **Rol:** Líder de Infraestructura / Arquitecto de Datos
+> **Fecha:** Diciembre 2025
 
 ---
 
-## 🎯 Objetivo
-Este repositorio contiene el **Kit de Inicio (Starter Kit)**. Su misión es actuar como arquitectos de datos para diseñar la infraestructura, persistencia y API de la nueva plataforma de analíticas de Apple Music.
+## Resumen del Proyecto
 
-El script incluido (`seed.js`) generará **miles de registros simulados** (Usuarios, Canciones, Artistas y Streams) para que puedan probar sus consultas en un entorno realista.
+Este proyecto es una Prueba de Concepto (PoC) solicitada por la directiva de Apple Music para migrar el motor de analíticas actual (SQL) a una arquitectura **NoSQL basada en MongoDB**.
+
+El objetivo es soportar la ingesta masiva de **millones de streams por minuto** y proveer métricas en tiempo real a los departamentos de Finanzas (Regalías) y Marketing (Churn Risk y Demografía).
+
+### Stack Tecnológico
+* **Base de Datos:** MongoDB v8.2.0 (Contenerizada)
+* **Infraestructura:** Docker & Docker Compose
+* **Lenguaje de Scripting:** Node.js v24.11.0
+* **Generación de Datos:** Faker.js (Simulación de datasets masivos)
 
 ---
 
-## 🚀 Instrucciones de Inicio (Setup)
+## Arquitectura de Datos (Schema Design)
 
-Sigue estos pasos estrictamente para configurar tu entorno de examen.
+Para cumplir con los requisitos de alto rendimiento de escritura (High Write Throughput) y lectura analítica, diseñamos un esquema desnormalizado utilizando el **Extended Reference Pattern**.
 
-### 1. Preparar el Repositorio
-Este repositorio es la base de tu entrega. No lo clones directamente, primero haz tu propia copia:
+![Schema Diagram](./database/schema-diagram.png)
+*(Ver archivo PDF en database/schema-diagram.png)*
 
-1.  Da clic en el botón **Fork** (arriba a la derecha de esta página) para crear una copia en tu cuenta de GitHub.
-2.  Clona **tu nuevo repositorio** (el que está en tu perfil) a tu máquina local:
-    ```bash
-    git clone [https://github.com/TU_USUARIO/seeding.git](https://github.com/TU_USUARIO/seeding.git)
-    cd seeding
-    ```
+### Decisiones de Diseño Críticas:
 
-### 2. Instalar Dependencias del Seeder
-El script de generación de datos utiliza Node.js. Instala las librerías necesarias:
+1.  **Colección `streams` (Optimizada para Regalías):**
+    * **Estrategia:** Patrón de Referencia Extendida.
+    * **Implementación:** Guardamos el `artist_id` dentro del documento de `streams`, aunque este dato pertenezca lógicamente a la canción.
+    * **Justificación:** Esto permite calcular el "Reporte de Regalías" agrupando millones de registros directamente en la colección de streams sin realizar costosos `$lookup` (JOINs) hacia las colecciones de canciones o artistas. Reduce la carga de CPU y latencia en reportes financieros.
+
+2.  **Colección `songs` (Lectura Rápida):**
+    * Incluye `artist_name` y `genre` embebidos para evitar JOINs al renderizar listas de reproducción o Top Charts en el cliente.
+
+3.  **Manejo de Tiempos:**
+    * Uso de tipos `ISODate` nativos para permitir agregaciones de ventana de tiempo (últimos 7 días, 30 días) y cálculos de edad eficientes.
+
+---
+
+## Instalación y Despliegue
+
+Sigue estos pasos para levantar el entorno completo.
+
+### 1. Requisitos Previos
+* Docker Desktop instalado y corriendo.
+* Node.js (v16+) y NPM.
+
+### 2. Infraestructura (Docker)
+Levantar la base de datos MongoDB con persistencia de datos:
+
 ```bash
+cd database
+docker-compose up -d
+
+```
+*(Esto iniciará el servicio ``apple_music_db`` en el puerto ``27017``.)*
+
+![LeventarDocker](./evidencias/LevantarDocker.png)
+
+![DockerUp](./evidencias/DockerUp.png)
+
+![Compose.yml](./evidencias/compose.png)
+
+### 3. Instalación de Dependencias
+Instalar librerías para el script de generación de datos:
+
+```bash
+# Desde la raíz del proyecto
 npm install
-````
 
-### 3\. Levantar Infraestructura (Docker)
+```
+![Dependencias](./evidencias/Dependencias.png)
 
-Antes de generar los datos, necesitas una base de datos corriendo.
 
-  * Crea tu archivo `docker-compose.yml` (ver sección de Entregables abajo).
-  * Levanta el servicio:
-    ```bash
-    docker-compose up -d
-    ```
-  * **Importante:** Asegúrate de que MongoDB esté expuesto en el puerto `27017`.
+# 4. Data Seeding (Generación de Datos)
 
-### 4\. Poblar la Base de Datos (Seeding)
-
-Una vez que Mongo esté corriendo, ejecuta el script mágico para llenar la DB con data de prueba:
-
+Poblar la base de datos con usuarios, canciones y miles de streams simulados:
 ```bash
 npm start
 ```
 
-*Si ves el mensaje "✅ EXITO: Base de datos poblada", estás listo para empezar.*
+Salida esperada: ``✅ EXITO: Base de datos poblada.``
 
------
+![Data Seeding](./evidencias/Dataseeding.png)
 
-## 📂 Estructura de Entrega (Requerido)
+# Ejecución de Analíticas (Business Queries)
 
-Para mantener el orden, debes crear las siguientes carpetas en este repositorio y colocar tus archivos donde corresponde. **El desorden será penalizado.**
+Para demostrar la capacidad de la arquitectura, ejecutamos el motor de agregación que responde a las 5 preguntas de negocio críticas:
 
-```text
-/
-├── api-design/
-│   └── api-spec.md         # Documentación de los 5 Endpoints (Request/Response)
-├── database/
-│   ├── docker-compose.yml  # Tu configuración de Docker
-│   ├── queries.js          # Tus 5 Agregaciones (Aggregation Pipelines)
-│   └── schema-diagram.pdf  # Imagen o PDF de tu diseño de esquema
-├── dashboard-v0/
-│   ├── screenshots/        # Capturas del dashboard generado en v0
-│   └── prompt.txt          # El prompt que usaste para generar la UI
-├── seed.js                 # (Ya incluido)
-├── package.json            # (Ya incluido)
-└── README.md               # (Este archivo)
+```bash
+node database/queries.js
 ```
 
------
+**Las 5 Consultas Implementadas:**
 
-## 📝 Lista de Tareas (Checklist)
+1. 💰 Reporte de Regalías: Suma total de segundos reproducidos por artista (Último mes).
 
-Para ganar los 100 puntos, asegúrate de completar:
+![Royal Report](./evidencias/Royaltyreport.png)
 
-  - [ ] **Infraestructura:** Docker corre correctamente y tiene persistencia de datos (Volumes).
-  - [ ] **Datos:** El script `npm start` corre sin errores y genera usuarios "Zombis" y datos de Guatemala.
-  - [ ] **Consultas:** El archivo `database/queries.js` contiene las 5 agregaciones solicitadas en el enunciado
-  - [ ] **API:** El diseño de los endpoints en `api-design/` coincide lógicamente con lo que muestra el Dashboard.
-  - [ ] **Visualización:** Las capturas en `dashboard-v0/` muestran una interfaz coherente con los datos.
-  - [ ] **Video:** Has subido tu video explicativo (link en la entrega del portal o en este README al final).
+2. **🇬🇹** Top 10 Regional: Canciones más escuchadas en Guatemala (Últimos 7 días).
 
------
+![Top 10](./evidencias/Top10.png)
 
-## ⚠️ Solución de Problemas (Troubleshooting)
+3. 🧟 Detección de Zombies: Usuarios Premium sin actividad en 30 días (Riesgo de Churn).
 
-**Error: "connect ECONNREFUSED 127.0.0.1:27017"**
+![zombies](./evidencias/zombies.png)
 
-  * **Causa:** Tu contenedor de Docker no está corriendo o no mapeaste el puerto.
-  * **Solución:** Revisa tu `docker-compose.yml` y asegúrate de tener `ports: - "27017:27017"`.
+4. 📉 Demografía por Género: Distribución de edades de oyentes de "Reggaeton".
 
-**Error: "Cannot find module..."**
+![Demografia](./evidencias/Demografia.png)
 
-  * **Causa:** No instalaste las librerías.
-  * **Solución:** Ejecuta `npm install` en la raíz del proyecto.
+5. 🏆 Heavy Users: Usuarios con mayor unicidad de canciones escuchadas de "Bad Bunny".
 
------
+![Heavy](./evidencias/Heavy.png)
 
-### 📅 Fecha Límite: 06 de Diciembre
 
-¡Éxito, Ingenieros\! 🍏🎵
+# API Specification
+
+El Dashboard administrativo consume la data a través de una API REST definida en el siguiente contrato.
+
+## 1. Get Artist Royalties
+**Endpoint:** `GET /api/analytics/royalties`
+**Description:** Retorna el tiempo total reproducido por artista en los últimos 30 días.
+**Response:**
+```json
+[
+  { "artist": "Bad Bunny", "total_seconds_played": 45000 },
+  { "artist": "Taylor Swift", "total_seconds_played": 32000 }
+]
 
 ```
 
-***
+## 2. Top Songs by Region
+**Endpoint:** `GET /api/charts/top-songs`
+**Query Params:** ?region=GT&days=7
+**Response:**
+```json
 
-### ¿Por qué funciona este README?
+[
+  { "song": "Luna", "artist": "Feid", "plays": 150 },
+  { "song": "Monaco", "artist": "Bad Bunny", "plays": 120 }
+]
 
-1.  **Reduce la fricción cognitiva:** Les dice exactamente qué comando ejecutar (`npm install`, `npm start`).
-2.  **Estandariza la entrega:** La sección "Estructura de Entrega" te salvará horas de calificación. Ya no tendrás que buscar dónde puso cada alumno el `docker-compose`.
-3.  **Checklist:** Les da seguridad psicológica de que "ya terminaron" si marcaron todas las casillas.
-4.  **Troubleshooting:** Previene que te escriban correos preguntando por errores básicos de conexión a Mongo.
 ```
+
+## 3. Zombie Users Risk
+**Endpoint:** GET /api/users/churn-risk
+**Response:**
+```json
+[
+  { "username": "usuario1", "email": "u1@mail.com", "subscription": "Premium" }
+]
+```
+
+## 4. Demographics by Genre
+**Endpoint:** `GET /api/analytics/demographics`
+**Query Params:** ?genre=Reggaeton
+**Response:**
+```json
+[
+  { "_id": 15, "range": "15-20", "count": 45 },
+  { "_id": 21, "range": "21-30", "count": 120 }
+]
+```
+
+## 5. Heavy Listeners
+**Endpoint:** `GET /api/users/heavy-listeners`
+**Query Params:** ?artist=Bad Bunny
+**Response:**
+```json
+[
+  { "username": "fan_numero1", "unique_artist_songs": 18 },
+  { "username": "music_lover", "unique_artist_songs": 15 }
+]
+```
+
+# Estructura del Proyecto
+
+![Estructura](./evidencias/Estructura.png)
+
+# Video Demo
+
+URL: 
