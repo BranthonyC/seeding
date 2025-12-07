@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: apple_music_db
+    restart: always
+    ports:
+      - "27017:27017" # CRÍTICO: Expone el puerto para que el seed.js pueda conectar
+    environment:
+      - MONGO_INITDB_DATABASE=apple_music_db
+    volumes:
+      - ./mongo-data:/data/db # Persistencia de datos local
+    networks:
+      - apple-net
+
+networks:
+  apple-net:
+    driver: bridge
